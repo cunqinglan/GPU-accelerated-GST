@@ -74,13 +74,13 @@ std::vector<std::vector<module>> hMetisPartition(const std::vector<module>& modu
     std::vector<module> left(modules.begin(), modules.begin() + mid);
     std::vector<module> right(modules.begin() + mid, modules.end());
 
-//    // Recursively partition the left and right parts
-//    auto leftPartitions = hMetisPartition(left, maxN);
-//    auto rightPartitions = hMetisPartition(right, maxN);
-//
-//    // Merge the left and right partitions
-//    partitions.insert(partitions.end(), leftPartitions.begin(), leftPartitions.end());
-//    partitions.insert(partitions.end(), rightPartitions.begin(), rightPartitions.end());
+   // Recursively partition the left and right parts
+   auto leftPartitions = hMetisPartition(left, maxN);
+   auto rightPartitions = hMetisPartition(right, maxN);
+
+   // Merge the left and right partitions
+   partitions.insert(partitions.end(), leftPartitions.begin(), leftPartitions.end());
+   partitions.insert(partitions.end(), rightPartitions.begin(), rightPartitions.end());
 
     return partitions;
 }
