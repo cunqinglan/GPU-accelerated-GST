@@ -2,7 +2,7 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
-#include <utility> // For std::pair
+#include <utility> 
 
 //1，partition by hmetis and build the slicing tree
 //The subcircuits obtained after partitioning the original circuit with hmetis are used as input, and N modules are included in each subcircuit
@@ -17,26 +17,45 @@ struct Module{
 
 
 struct SubCircuit {
-    SubCircuit() = default;
-
-    Subcircuit(int N) {
-        Module.reserve(N); 
-        for (int i = 0; i < N; ++i) {
-          
-            modules.push_back(Module());
-        }
+    std::vector<Module> modules;
+    SubCircuit(int N) {
+        modules.reserve(N);
     }
-
 };
 
 
+template pair make_pair(T1 w, T2 h) { 
+	return pair(w, h);
+}
+
+
 std::vector<std::pair<double, double>> Module; //Module is a vector of dimension 1x2 containing the variables w,h, which mean the width and height of the module
-typedef std::vector<Module> IniCircuit;  //IniCircuit is an Mx2 dimensional matrix, consisting of M modules containing M/N subcircuits
-typedef std::vector<Module> SubCircuit;  //A SubCircuit is an Nx2 dimensional matrix, consisting of N modules
+std::vector<Module> IniCircuit;  //IniCircuit is an Mx2 dimensional matrix, consisting of M modules containing M/N subcircuits
+std::vector<Module> SubCircuit;  //A SubCircuit is an Nx2 dimensional matrix, consisting of N modules
+std::vector<Module> Circuit;  
 
+// bisection 
+std::pair<SubCircuit, SubCircuit> bisection(const SubCircuit& Circuit, int N) {
+    SubCircuit left(N), right(N);
+    size_t mid = Circuit.modules.size() / 2;
+    for (size_t i = 0; i < mid; ++i) {
+        left.modules.push_back(Circuit.modules[i]);
+    }
+    for (size_t i = mid; i < Circuit.modules.size(); ++i) {
+        right.modules.push_back(Circuit.modules[i]);
+    }
+    return {left, right};
+}
 
-void hmetisfunc(){
 //The hmetisfunc function is constructed, which makes it possible to recursively bisect the original circuit until each leaf node contains N modules
+void hmetisfunc(std::vector<Module>& IniCircuit, int N, std::vector<Module>& SubCircuit){
+	if (IniCircuit.size() <= N) {
+	SubCircuit.push_back(IniCircuit);
+	return;
+	}
+	auto [left, right] = bisection(const SubCircuit& IniCircuit, int N);
+	hmetisfunc(left.modules, N, SubCircuit);
+	hmetisfunc(right.modules, N, SubCircuit);
 }
 
 
@@ -74,7 +93,7 @@ void insertright(Node* &root, int val) {
 }
 
 
-Node* Tree(std::vector<Module>& modules, int N = 2) {
+Node* Tree(std::vector<Module>& modules, int N) {
     Node* root = NULL; 
     insertleft(root, 1); 
     insertleft(root->left, 2); 
@@ -83,27 +102,26 @@ Node* Tree(std::vector<Module>& modules, int N = 2) {
     insertright(root->left->right, 5);
     insertleft(root->right->left, 6);
     insertright(root->right->right, 7);
-    return 0;
+    return root;
 }
 
 
 //2，combine the curve and shape the merge curve
 
 typedef std::vector<std::pair<double, double>> Points;
-Points curve(const Module& module, int num_points=100);
+Points curve(const std::pair<double, double>& module, int num_points=100);
 
 Points curve(const Module& module, int num_points=100) {
-    std::cout<<"Generating Curve for node "<<n<<"\n";
     Points curvePoints;
     double x_min, x_max, step;
 
-    double x_min = std::min(module[0],module[1]);
-    double x_max = std::max(module[0],module[1]);
+    double x_min = std::min(module.first,module.second);
+    double x_max = std::max(module.first,module.second);
     double step = (x_max - x_min) / (num_points - 1);
 
     for (int i = 0; i < num_points; ++i) {
         double x = x_min + i * step;
-        double y = module[0] * module[1] / x;
+        double y = module.first * module.second / x;
 
         curvePoints.emplace_back(x, y);
     }
@@ -118,8 +136,8 @@ Points addition(const Points& curveA, const Points& curveB) {
     for (const auto& pointA : curveA) {
         for (const auto& pointB : curveB) {
             double newx = pointA.x + pointB.x;
-            double newy = std::max(pointA.y, pointB.y);
-            Ch.push_back(module(newx, newy));  
+            double newy = pointA.y;
+            Ch.push_back(std::make_pair(newx, newy));  
         }
     }
     return Ch;
@@ -127,22 +145,16 @@ Points addition(const Points& curveA, const Points& curveB) {
 
 
 //flipping
-Points flipping(const Points& curve) {
+Points flipping(const Points& curveCh) {
     Points Cv;  
-    for (const auto& point : curve) {
-        Cv.push_back(module(point.y, point.x)); 
+    for (const auto& pointCh : curveCh) {
+        Cv.push_back(module(pointCh.y, pointCh.x)); 
     }
     return Cv;
 }
 
 
-//merging
-Points merging(const Points& curve, const Points& curveCh, const Points& curveCv, int num_points=100) {
-    Points C; 
-    Points allPoints;
-    allPoints.reserve(curveCh.size() + curveCv.size()); 
-
-    bool findXForY(const Points& curve, double y, double& x) {
+bool findXForY(const Points& curve, double y, double& x) {
     for (const auto& point : curve) {
         if (point.second == y) {
             x = point.first;
@@ -150,15 +162,21 @@ Points merging(const Points& curve, const Points& curveCh, const Points& curveCv
         }
     }
     return false;
-    }
+}
+
+//merging
+Points merging(const Points& curve, const Points& curveCh, const Points& curveCv, int num_points=100) {
+    Points C; 
+    Points allPoints;
+    allPoints.reserve(curveCh.size() + curveCv.size()); 
 
     std::merge(curveCh.begin(), curveCh.end(), curveCv.begin(), curveCv.end(), std::back_inserter(allPoints),
               [](const std::pair<double, double>& a, const std::pair<double, double>& b) {
                   return a.second < b.second;
               });
     
-    double x_min = std::min(curveCh.first,curveCv.first);
-    double x_max = std::max(curveCh.second,curveCh.second);
+    double x_min = std::min(curveCh.first, curveCv.first);
+    double x_max = std::max(curveCh.second, curveCh.second);
     double step = (x_max - x_min) / (num_points - 1);
     double x_last = -1; 
     double y_last = -1; 
@@ -178,8 +196,8 @@ Points merging(const Points& curve, const Points& curveCh, const Points& curveCv
 
 
 //print the curve points of C
-void printcurve(const Points& points, int count) {
-    for (int i = 0; i < count && i < points.size(); ++i) {
+void printcurve(const Points& points, int num_points=100) {
+    for (int i = 0; i < num_points && i < points.size(); ++i) {
         const auto& point = points[i];
         std::cout << "Point " << i << ": (" << point.first << ", " << point.second << ")" << std::endl;
     }
@@ -190,26 +208,21 @@ void printcurve(const Points& points, int count) {
 int main() {
     const size_t M = 4; // IniCircuit is the matrix of Mx2
     const size_t N = 2;  // SubCircuit is the matrix of Nx2
-
-    std::cout << "Enter the number of modules (M): ";
-    int M;
-    std::cin >> M;
-
+	
     for (int i = 0; i < M; ++i) {
+    	double w, h;
         std::cout << "Enter w, h for module " << i + 1 << ": ";
         std::cin >> w >> h ;
         IniCircuit.emplace_back(w, h);
     }
 
-    Circuit IniCircuit;
-    Circuit SubCircuit;
 
-    hmetisfunc(IniCircuit, SubCircuit);
+    hmetisfunc(IniCircuit, N, SubCircuit);
 
     std::cout << "SubCircuits:" << std::endl;
-    for (const auto& sub : subCircuit) {
-        for (const auto& mod : sub) {
-            std::cout << mod << " ";
+    for (const auto& Sub : SubCircuits) {
+        for (const auto& mod : Sub.modules) {
+            std::cout << "(" << mod.w << ", " << mod.h << ") ";
         }
         std::cout << std::endl;
     }
